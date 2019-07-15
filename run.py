@@ -157,7 +157,12 @@ if __name__ == '__main__':
             else:
                 s.append(i)
 
+        # TODO:
+        # Path contains useful classifying info, e.g. https://www.asos.com/women/a-to-z-of-brands/adidas/cat/?cid=5906&refine=attribute_10992:61388&nlid=ww|shoes|shop+by+brand
+        # 
+
         d = {
+        	'netloc': u[1],
             'length': len(string),
             'counts': {
                 'lower': len(cu),
