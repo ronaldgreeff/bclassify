@@ -1,6 +1,6 @@
 #*-*encoding: utf-8*-*
 from peewee import *
-from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import LabelEncoder, LabelBinarizer, MultiLabelBinarizer, OneHotEncoder
 import pandas as pd
 import numpy as np
 import json
@@ -22,166 +22,202 @@ class Extract(BaseModel):
     extract = TextField(null=True)
 
 
-if __name__ == '__main__':
+def convert_extract_to_csv(filename, limited=True):
 
-    def create_csv(filename, limited=True):
+    selection = Extract.select().where(Extract.extract.is_null(False))
+    e = []
+    for select in selection:
 
-        selection = Extract.select().where(Extract.extract.is_null(False))
-        e = []
-        for select in selection:
+        site = select.site.lower()
+        extract = json.loads(select.extract)
 
-            site = select.site.lower()
-            extract = json.loads(select.extract)
+        d = {
+            'site': extract['site'],
+            'url': extract['url'],
+            'images': len(extract['images']),
+            'texts': len(extract['texts']),
+            'links': len(extract['links']),
+        }
 
-            d = {
-                'site': extract['site'],
-                'url': extract['url'],
-                'images': len(extract['images']),
-                'texts': len(extract['texts']),
-                'links': len(extract['links']),
-            }
+        if limited:
 
-            if limited:
+            d.update(
+                {k: ''.join([i for i in v if not i.isalpha()]) for k, v in extract['body']['computed'].items() if k in ('height', 'width')})
 
-                d.update(
-                    {k: ''.join([i for i in v if not i.isalpha()]) for k, v in extract['body']['computed'].items() if k in ('height', 'width')})
+            meta_tags = extract['meta_tags']
 
-                meta_tags = extract['meta_tags']
+            descriptions = set()
+            titles = set()
+            types = set()
 
-                descriptions = set()
-                titles = set()
-                types = set()
+            for title_string in [t for t in extract['titles'] if t]:
+                for word in re.split(re_toke, title_string):
+                    word = word.lower()
+                    if word and (len(word)>1) and word.isalpha() and word != site:
+                        titles.add(word)
 
-                for title_string in [t for t in extract['titles'] if t]:
+            for k in meta_tags:
+
+                if k in ('keywords', 'description', 'og:description', 'twitter:description'):
+                    descript_string = meta_tags[k]
+
+                    for word in re.split(re_toke, descript_string):
+                        word = word.lower()
+                        if word and (len(word)>1) and word.isalpha() and word != site:
+                            descriptions.add(word)
+
+
+                elif k in ('og:title', 'twitter:title'):
+                    title_string = meta_tags[k]
+
                     for word in re.split(re_toke, title_string):
                         word = word.lower()
                         if word and (len(word)>1) and word.isalpha() and word != site:
                             titles.add(word)
 
-                for k in meta_tags:
+                elif k in ('og:type', ):
+                    type_string = meta_tags[k]
 
-                    if k in ('keywords', 'description', 'og:description', 'twitter:description'):
-                        descript_string = meta_tags[k]
-
-                        for word in re.split(re_toke, descript_string):
-                            word = word.lower()
-                            if word and (len(word)>1) and word.isalpha() and word != site:
-                                descriptions.add(word)
+                    for word in re.split(re_toke, type_string):
+                        word = word.lower()
+                        if word and (len(word)>1) and word.isalpha() and word != site:
+                            types.add(word)
 
 
-                    elif k in ('og:title', 'twitter:title'):
-                        title_string = meta_tags[k]
+            if descriptions:
+                d['descriptions'] = ','.join(descriptions)
 
-                        for word in re.split(re_toke, title_string):
-                            word = word.lower()
-                            if word and (len(word)>1) and word.isalpha() and word != site:
-                                titles.add(word)
+            if titles:
+                d['titles'] = ','.join(titles)
 
-                    elif k in ('og:type', ):
-                        type_string = meta_tags[k]
+            if types:
+                d['types'] = ','.join(types)
 
-                        for word in re.split(re_toke, type_string):
-                            word = word.lower()
-                            if word and (len(word)>1) and word.isalpha() and word != site:
-                                types.add(word)
+        else:
 
+            d.update(
+                {k:v for k, v in extract['meta_tags'].items()})
 
-                if descriptions:
-                    d['descriptions'] = ','.join(descriptions)
+            d.update(
+                {k:v for k, v in extract['body']['computed'].items()})
 
-                if titles:
-                    d['titles'] = ','.join(titles)
+        e.append(d)
 
-                if types:
-                    d['types'] = ','.join(types)
-
-            else:
-
-                d.update(
-                    {k:v for k, v in extract['meta_tags'].items()})
-
-                d.update(
-                    {k:v for k, v in extract['body']['computed'].items()})
-
-            e.append(d)
-
-        df = pd.DataFrame(e)
-        df.to_csv(filename, index=None, header=True)
+    df = pd.DataFrame(e)
+    df.to_csv(filename, index=None, header=True)
 
 
-    # create_csv(filename='page_classification_data.csv')
 
+if __name__ == '__main__':
+
+    # convert_extract_to_csv(filename='page_classification_data.csv')
     # df = (pd.read_csv('page_classification_data.csv', engine='python'))
     # print(df.info())
 
-    def get_url_info(url):
-        """ scheme://netloc/path;parameters?query#fragment
+    class feature_extractor():
 
-        https://www.amazon.co.uk/ap/signin?openid.return_to=https%3A%2F%2Fwww.amazon.co.uk%2Fref%3Dgw_sgn_ib%2F259-3956818-6697345&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=gbflex&openid.mode=checkid_setup&marketPlaceId=A1F83G8C2ARO7P&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&#collection
-        ParseResult(
-            scheme='https',
-            netloc='www.amazon.co.uk',
-            path='/ap/signin',
-            params='',
-            query='openid.return_to=https%3A%2F%2Fwww.amazon.co.uk%2Fref%3Dgw_sgn_ib%2F259-3956818-6697345&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=gbflex&openid.mode=checkid_setup&marketPlaceId=A1F83G8C2ARO7P&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&',
-            fragment='collection')
+        def __init__(self):
+            self.classification_data = pd.read_csv("page_classification_data.csv")
 
-        qs = {
-            'openid.return_to': ['https://www.amazon.co.uk/ref=gw_sgn_ib/259-3956818-6697345'],
-            'openid.identity': ['http://specs.openid.net/auth/2.0/identifier_select'],
-            'openid.assoc_handle': ['gbflex'],
-            'openid.mode': ['checkid_setup'],
-            'marketPlaceId': ['A1F83G8C2ARO7P'],
-            'openid.claimed_id': ['http://specs.openid.net/auth/2.0/identifier_select'],
-            'openid.ns': ['http://specs.openid.net/auth/2.0']}
-        """
+            self.lb_site = LabelBinarizer()
+            self.lb_frag = LabelBinarizer()
+            self.mlb_query = MultiLabelBinarizer()
+            # self.oe.path = OrdinalEncoder()
 
-        u = urlparse(url)
+        def get_url_features(self, url):
 
-        string = ''.join(u[2:]) # excludes scheme & netloc
+            u = urlparse(url)
+            string = ''.join(u[2:]) # exclude scheme & netloc
 
-        cu = []
-        cl = []
-        n = []
-        s = []
+            cu = []
+            cl = []
+            n = []
+            s = []
 
-        for i in string:
-
-            if i.isalpha():
-                if i.isupper():
-                    cu.append(i)
+            for i in string:
+                if i.isalpha():
+                    if i.isupper():
+                        cu.append(i)
+                    else:
+                        cl.append(i)
+                elif i.isnumeric():
+                    n.append(i)
                 else:
-                    cl.append(i)
-            elif i.isnumeric():
-                n.append(i)
-            else:
-                s.append(i)
+                    s.append(i)
 
-        # TODO:
-        # Path contains useful classifying info, e.g. https://www.asos.com/women/a-to-z-of-brands/adidas/cat/?cid=5906&refine=attribute_10992:61388&nlid=ww|shoes|shop+by+brand
-        # 
+            # TODO:
+            # Path contains useful classifying info, e.g. /women/a-to-z-of-brands/adidas/cat/
 
-        d = {
-        	'netloc': u[1],
-            'length': len(string),
-            'counts': {
-                'lower': len(cu),
-                'upper': len(cl),
-                'numeric': len(n),
-                'symbols' len(s)
-            },
-            'segments': len(u.path.split('/')),
-            'queries': parse_qs(u.query).keys(),
-            'fragments': u[5],
-        }
+            queries = [i if i else '' for i in parse_qs(u.query).keys()]
 
-        # queries = len(o.)
+            d = {
+            	'netloc': u[1],
+                'length': len(string),
+                'counts': {
+                    'lower': len(cu),
+                    'upper': len(cl),
+                    'numeric': len(n),
+                    'symbols': len(s)
+                },
+                'segments': len(u.path.split('/')),
+                'queries': queries,
+                'fragments': u[5],
+            }
 
-    url = 'https://www.amazon.co.uk/ap/signin?openid.return_to=https%3A%2F%2Fwww.amazon.co.uk%2Fref%3Dgw_sgn_ib%2F259-3956818-6697345&openid.identity=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.assoc_handle=gbflex&openid.mode=checkid_setup&marketPlaceId=A1F83G8C2ARO7P&openid.claimed_id=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0%2Fidentifier_select&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&#t=40,80&xywh=160,120,320,240'
-    get_url_info(url)
+            return d
+            # url = 'https://www.asos.com/women/a-to-z-of-brands/adidas/cat/?cid=5906&refine=attribute_10992:61388&nlid=ww|shoes|shop+by+brand'
+            # u = get_url_features(url)
 
-    # data['og:url'] = split_url(list(data['og:url']))
+        def encode_features(self):
 
-    # # description_encoder = LabelEncoder()
-    # # ogtype_encoder = LabelEncoder()
-    # # url_encoder = LabelEncoder()
+            url_features = map(self.get_url_features, self.classification_data['url'])
+
+            sites = []
+            fragments = []
+            queries = []
+
+            for i in url_features:
+                sites.append(i['netloc'])
+                fragments.append(i['fragments'])
+                queries.append(i['queries'])
+
+            self.binary_sites = ('S', self.lb_site.fit_transform(sites))
+            self.binary_frags = ('F', self.lb_frag.fit_transform(fragments))
+            self.binary_queries = ('Q', self.mlb_query.fit_transform(queries))
+
+        def create_dataframe(self):
+
+            df = pd.DataFrame()
+            df['url'] = self.classification_data['url']
+
+            dataframes = [df,]
+
+            for i0 in (self.binary_sites, self.binary_frags, self.binary_queries):
+
+                col_id = i0[0]
+                binaries = i0[1]
+                col_range = range(len(binaries[0]))
+
+                column_names = ['{}{}'.format(col_id, bi) for bi in col_range]
+                column_values_set = []
+
+                for i1 in range(len(binaries)):
+                    row = binaries[i1]
+                    column_values_set.append(row)
+
+                    # column_values = []
+                    # for i2 in range(len(row)):
+                    #     column_values.append(row[i2])
+
+                dataframes.append(pd.DataFrame(column_values_set, columns=column_names))
+
+            self.primary_df = pd.concat(dataframes, axis=1, sort=False)
+
+            # result = pd.concat([df2, df3], axis=1, sort=False)
+
+            self.primary_df.to_csv('processed_urls.csv', index=None, header=True)
+
+
+    fobj = feature_extractor()
+    fobj.encode_features()
+    fobj.create_dataframe()
