@@ -161,6 +161,9 @@ if __name__ == '__main__':
 
                     df[subset] = df[subset].apply(lambda x: [item for item in x.split(',') if item not in self.stop_words])
 
+                    # TODO
+                    # Tokenize each desciptor word
+
                     for site in df.site.unique():
                         description_lists = [i for i in df.loc[df['site'] == site][subset]]
 
