@@ -65,6 +65,8 @@ def convert_extract_to_csv(filename, limited=True):
 
             for k in meta_tags:
 
+            	# Can abstract this. Should also use regex to match keys containing "description" and "title"
+
                 if k in ('keywords', 'description', 'og:description', 'twitter:description'):
                     descript_string = meta_tags[k]
 
@@ -81,23 +83,12 @@ def convert_extract_to_csv(filename, limited=True):
                         if word and (len(word)>1) and word.isalpha() and word != site:
                             titles.add(word)
 
-                elif k in ('og:type', ):
-                    type_string = meta_tags[k]
-
-                    for word in re.split(re_toke, type_string):
-                        word = word.lower()
-                        if word and (len(word)>1) and word.isalpha() and word != site:
-                            types.add(word)
-
-
             if descriptions:
                 d['descriptions'] = ','.join(descriptions)
 
             if titles:
                 d['titles'] = ','.join(titles)
 
-            if types:
-                d['types'] = ','.join(types)
 
         else:
 
@@ -115,10 +106,9 @@ def convert_extract_to_csv(filename, limited=True):
     df.to_csv(filename, index=None, header=True)
 
 
-
 if __name__ == '__main__':
 
-    # convert_extract_to_csv(filename='page_classification_data.csv')
+    convert_extract_to_csv(filename='page_classification_data.csv')
     # df = (pd.read_csv('page_classification_data.csv', engine='python'))
     # print(df.info())
 
@@ -184,7 +174,7 @@ if __name__ == '__main__':
                     # for s in search:
                     #     print(all([s in x for x in l]))
 
-            # df = reduce_descriptors() # NGTYI(Y)
+            # df = reduce_descriptors() # Doesn't seem like this is useful yet
 
 
             df = pd.DataFrame({
@@ -221,6 +211,7 @@ if __name__ == '__main__':
 
             # TODO:
             # Path contains useful classifying info, e.g. /women/a-to-z-of-brands/adidas/cat/
+            # ordinal left to right
 
             queries = [i if i else '' for i in parse_qs(u.query).keys()]
 
@@ -274,7 +265,7 @@ if __name__ == '__main__':
         def consolidate_feature_dataframes(self):
 
             df = pd.DataFrame({
-                # 'site': self.classification_data['site'],
+                'site': self.classification_data['site'],
                 'url': self.classification_data['url'],
                 'height': self.classification_data['height'],
                 'width': self.classification_data['width'],
@@ -307,6 +298,10 @@ if __name__ == '__main__':
 
             o = [(k.encode('utf-8'), v) for k,v in word_dict.items()]
             o.sort(key=lambda x: x[1], reverse=True)
+
+
+    class learner():
+    	pass
 
 
     fobj = feature_extractor()
