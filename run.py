@@ -1,6 +1,6 @@
 #*-*encoding: utf-8*-*
 from peewee import *
-from sklearn.preprocessing import LabelEncoder, LabelBinarizer, MultiLabelBinarizer, OneHotEncoder
+from sklearn.preprocessing import LabelEncoder, LabelBinarizer, MultiLabelBinarizer, OneHotEncoder, StandardScaler
 import pandas as pd
 import numpy as np
 import json
@@ -65,7 +65,7 @@ def convert_extract_to_csv(filename, limited=True):
 
             for k in meta_tags:
 
-            	# Can abstract this. Should also use regex to match keys containing "description" and "title"
+                # Abstract this. Look into using regex for description and title
 
                 if k in ('keywords', 'description', 'og:description', 'twitter:description'):
                     descript_string = meta_tags[k]
@@ -107,10 +107,6 @@ def convert_extract_to_csv(filename, limited=True):
 
 
 if __name__ == '__main__':
-
-    convert_extract_to_csv(filename='page_classification_data.csv')
-    # df = (pd.read_csv('page_classification_data.csv', engine='python'))
-    # print(df.info())
 
     class feature_extractor():
 
@@ -216,7 +212,7 @@ if __name__ == '__main__':
             queries = [i if i else '' for i in parse_qs(u.query).keys()]
 
             d = {
-            	'netloc': u[1],
+                'netloc': u[1],
                 'length': len(string),
                 'counts': {
                     'lower': len(cu),
@@ -242,16 +238,19 @@ if __name__ == '__main__':
 
             dataframes = []
 
-            for i0 in (binary_sites, binary_frags, binary_queries):
+            for i in (binary_sites, binary_frags, binary_queries):
 
-                col_id = i0[0]
-                binaries = i0[1]
+                col_id = i[0]
+                binaries = i[1]
+                scaled_binaries = StandardScaler().fit_transform(binaries)
+
                 col_range = range(len(binaries[0]))
-                column_names = ['{}{}'.format(col_id, bi) for bi in col_range]
+                column_names = ['{}{}'.format(col_id, i) for i in col_range]
 
-                dataframes.append(pd.DataFrame(binaries, columns=column_names))
+                dataframes.append(pd.DataFrame(scaled_binaries, columns=column_names))
 
-            self.df_url_features = pd.concat(dataframes, axis=1, sort=False)
+
+            self.df_scaled_url_features = pd.concat(dataframes, axis=1, sort=False)
 
 
         def encode_descriptors(self):
@@ -259,7 +258,23 @@ if __name__ == '__main__':
             binaries = self.mlb_descriptions.fit_transform(self.df_descriptors['descriptions'])
             column_names = ['{}{}'.format('D', i) for i in range(len(binaries[0]))]
 
-            self.df_descriptor_features = pd.DataFrame(binaries, columns=column_names)
+            scaled_binaries = StandardScaler().fit_transform(binaries)
+
+            self.df_descriptor_features = pd.DataFrame(scaled_binaries, columns=column_names)
+
+
+        def scale_descriptors(self):
+
+            d = {}
+
+            for column_name in ('height', 'width', 'links', 'texts', 'images'):
+
+                scaled_column = StandardScaler().fit_transform(self.classification_data[[column_name]])
+
+                d[column_name] =  scaled_column.flatten()
+
+
+            self.df_scaled_descriptor_features = pd.DataFrame.from_dict(d)
 
 
         def consolidate_feature_dataframes(self):
@@ -267,21 +282,18 @@ if __name__ == '__main__':
             df = pd.DataFrame({
                 'site': self.classification_data['site'],
                 'url': self.classification_data['url'],
-                'height': self.classification_data['height'],
-                'width': self.classification_data['width'],
-                'links': self.classification_data['links'],
-                'texts': self.classification_data['texts'],
-                'images': self.classification_data['images'],
             })
 
-            dataframes = [df, self.df_url_features, self.df_descriptor_features]
+            dataframes = [df, self.df_scaled_url_features, self.df_scaled_descriptor_features]
 
-            self.primary_df = pd.concat(dataframes, axis=1, sort=False)
+            self.standardised_primary_df = pd.concat(dataframes, axis=1, sort=False)
 
 
         def export_primary_dataframe(self):
 
-            self.primary_df.to_csv('processed_urls.csv', index=None, header=True)
+            self.standardised_primary_df.to_csv('standardised.csv', index=None, header=True)
+
+            # self.primary_df.to_csv('processed_urls.csv', index=None, header=True)
 
 
         def print_descriptors(self):
@@ -301,12 +313,16 @@ if __name__ == '__main__':
 
 
     class learner():
-    	pass
+        pass
 
+
+
+    # convert_extract_to_csv(filename='page_classification_data.csv')
 
     fobj = feature_extractor()
     fobj.encode_url_features()
     fobj.encode_descriptors()
+    fobj.scale_descriptors()
     fobj.consolidate_feature_dataframes()
-    fobj.export_primary_dataframe()
+    # fobj.export_primary_dataframe()
     # fobj.print_descriptors()
